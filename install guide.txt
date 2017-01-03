@@ -1,0 +1,267 @@
+
+
+#Install guide
+
+1. Build a raspbian lite image and boot pi with wired dhcp connection
+2. setup ssh using raspi-conf
+3. change default password
+4. check pi has an internet connection (ping google)
+5. scp install tar file to raspberry pi
+6. SSH onto pi
+7. uncompress .tar file on the pi and "sudo sh install.sh"
+8. edit /home/pi/url.conf for the RTSP stream you want
+9. restart service "sudo service videoPlayer restart"
+11.Set static IP address if it needs one
+12.reboot Pi with video output connected required ( HDMI is default if plugged in)
+	note: once rebooted the pi will become READ ONLY
+	note:To gain write access to the PI run 	"sudo rpi-rw"
+	note:to lock the pi back to read only run	"sudo rpi-ro"
+
+
+
+
+
+To install scp .tar file to raspbery pi then 		sudo sh install.sh
+to uninstall run             				sudo sh uninstall.sh
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+######################## Build log ##################################
+
+
+
+
+final file locations
+	#rpi-rw			- /usr/bin
+	#rpi-ro			- /usr/bin
+	#videoPlayer		- /etc/init.d
+	#streamPlayer.sh	- /usr/local/bin/streamPlayer
+	#readme.txt		- /home/pi
+	#url.conf		- /home/pi
+
+
+
+#update and install player
+	sudo apt-get update
+	sudo apt-get -y upgrade
+	sudo apt-get install omxplayer
+	sudo apt-get install screen
+
+#set pi to run in readonly mode
+
+	sudo cp /etc/default/rcS /etc/default/rcS.orig
+	sudo sh -c "echo 'RAMTMP=yes' >> /etc/default/rcS"
+	sudo mv /etc/fstab /etc/fstab.orig
+	sudo sh -c "echo 'tmpfs           /tmp            tmpfs   nodev,nosuid,size=30M,mode=1777       0    0' >> /etc/fstab"
+	sudo sh -c "echo 'tmpfs           /var/log        tmpfs   nodev,nosuid,size=30M,mode=1777       0    0' >> /etc/fstab"
+	sudo sh -c "echo 'proc            /proc           proc    defaults                              0    0' >> /etc/fstab"
+	sudo sh -c "echo '/dev/mmcblk0p1  /boot           vfat    defaults                              0    2' >> /etc/fstab"
+	sudo sh -c "echo '/dev/mmcblk0p2  /               ext4    defaults,ro,noatime,errors=remount-ro 0    1' >> /etc/fstab"
+	sudo sh -c "echo ' ' >> /etc/fstab"
+	sudo mv /etc/mtab /etc/mtab.orig
+	sudo ln -s /proc/self/mounts /etc/mtab
+
+
+#pi will now run in Read only mode
+
+#Add some scripts to flip back to readwrite an readonly modes. Run either script to enable and disable as sudo sh
+
+
+	$sudo nano /usr/bin/rpi-rw
+		#add following to file
+	
+		#!/bin/sh
+		sudo mount -o remount,rw /dev/mmcblk0p2  /
+		echo "Filesystem is unlocked - Write access"
+		echo "type ' rpi-ro ' to lock"
+
+
+	$sudo chmod +x  /usr/bin/rpi-rw
+
+
+
+	$sudo nano /usr/bin/rpi-ro
+		#Add following to new file
+
+			#!/bin/sh
+			sudo mount -o remount,ro /dev/mmcblk0p2  /
+			echo "Filesystem is locked - Read Only access"
+			echo "type ' rpi-rw ' to unlock"
+
+
+	$sudo chmod +x  /usr/bin/rpi-ro
+
+
+
+#add url.conf file
+	$nano ~/url.conf
+		#add your video stream to file
+			rtsp://192.168.1.1:554/1
+
+
+
+#add OMX playaer script file to /usr/local/bin/streamPlayer
+	$nano ~/streamPlayer.sh
+		#add the following to file (url for stream is grabbed from url.conf file)
+
+			#!/bin/bash
+
+			StreamUrl=`cat /home/pi/url.conf`
+			#echo "$StreamUrl"
+
+			while true; do
+			if pgrep omxplayer > /dev/null
+			then
+				echo 'omxplayer running'
+			else
+				#/usr/bin/omxplayer -b --live rtsp://184.72.239.149/vod/mp4:BigBuckBunny_175k.mov
+				/usr/bin/omxplayer -b --live "$StreamUrl"
+			fi
+			done
+
+
+
+
+
+
+
+
+	$cd ~/
+	$sudo chmod 755 /usr/local/bin/streamplayer/streamPlayer.sh
+
+
+
+#add init.d script
+	$sudo nano /etc/init.d/videoPlayer
+		#add the following to the file
+			#!/bin/sh
+			# /etc/init.d/videoloop
+
+			### BEGIN INIT INFO
+			# Provides:          videoloop
+			# Required-Start:    $remote_fs $syslog
+			# Required-Stop:     $remote_fs $syslog
+			# Default-Start:     2 3 4 5
+			# Default-Stop:      0 1 6
+			# Short-Description: Simple script to start a program at boot
+			# Description:       A simple script from www.stuffaboutcode.com which will start / stop a program a boot / shutdown.
+			### END INIT INFO
+
+			DISPLAY=:0
+
+			# Change the next 3 lines to suit where you install your script and what you want to call it
+			DIR=/usr/local/bin/streamplayer
+			DAEMON=$DIR/streamPlayer.sh
+			DAEMON_NAME=videoloop
+			 
+			# This next line determines what user the script runs as.
+			# Root generally not recommended but necessary if you are using the Raspberry Pi GPIO from Python.
+			DAEMON_USER=pi
+			 
+			# The process ID of the script when it runs is stored here:
+			PIDFILE=/var/run/$DAEMON_NAME.pid
+			 
+			. /lib/lsb/init-functions
+			 
+			do_start () {
+			    log_daemon_msg "Starting system $DAEMON_NAME daemon"
+			    start-stop-daemon --start --background --pidfile $PIDFILE --make-pidfile $PIDFILE --user $DAEMON_USER --startas $DAEMON
+			    log_end_msg $?
+			}
+			do_stop () {
+			    log_daemon_msg "Stopping system $DAEMON_NAME daemon"
+			    start-stop-daemon --stop --pidfile $PIDFILE --retry 10
+			    log_end_msg $?
+			    killall streamPlayer.sh
+			    killall omxplayer.bin
+			}
+			 
+			case "$1" in
+			 
+			    start|stop)
+				do_${1}
+				;;
+			 
+			    restart|reload|force-reload)
+				do_stop
+				do_start
+				;;
+			 
+			    status)
+				status_of_proc "$DAEMON_NAME" "$DAEMON" && exit 0 || exit $?
+				;;
+			    *)
+				echo "Usage: /etc/init.d/$DEAMON_NAME {start|stop|restart|status}"
+				exit 1
+				;;
+			 
+			esac
+			exit 0
+
+
+
+
+
+
+
+
+
+	#chmod init file
+		$sudo chmod 755 /etc/init.d/videoPlayer
+	#update systemctl (start up script)		
+		$update-rc.d videoPlayer defaults
+
+	#start script
+		$sudo service videoPlayer start  		(start|stop|status)
+
+
+
+
+
+
+ 
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,28 @@
+
+play rtsp video via omxplayer via termianl.
+	
+	$omxplayer --live -b rtsp:172.25.40.1:554/stream1
+
+# guide to watch
+http://rpihome.blogspot.co.uk/2015/10/watchdog-for-raspberry-pi.html
+
+
+#set up watchdog
+
+	add watchdog modual to file
+		$echo "bcm2708_wdog" | sudo tee -a /etc/modules
+
+	sudo apt-get install watchdog
+	sudo update-rc.d watchdog defaults
+
+	add following to bottom of the file /etc/watchdog.conf
+		watchdog-timeout = 15
+		interval = 5
+		watchdog-device        = /dev/watchdog
+
+#fix the autostart not working for watchdog	
+	sudo ln /lib/systemd/system/watchdog.service /etc/systemd/system/multi-user.target.wants/watchdog.service
+
+
+
+
